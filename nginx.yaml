@@ -11,14 +11,6 @@
       name: ['nginx']
       state: latest
 
-  - name: "create www directory"
-    file:
-      path: /var/www/{{ domain }}
-      state: directory
-      mode: '0775'
-      owner: "{{ ansible_user }}"
-      group: "{{ ansible_user }}"
-
   - name: delete default nginx site
     file:
       path: /etc/nginx/sites-enabled/default
