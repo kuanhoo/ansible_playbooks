@@ -1,219 +1,238 @@
-- name: Create One VM
-  hosts: localhost
-  connection: local
+---
+- hosts: localhost
+  name:  DeployUbuntu.yml
   gather_facts: false
-  tasks:
-  # Check if the name of the VM to be created passed or not, if not terminate the play with an error message
-  - name: Verify that important variables are not missing
-    fail: msg="Please enter the proper VM name to be configure"
-    when: vmchoice is undefined
-  # Check if all config files exist
-  - name: Check if passwords.yml exists
-    stat:
-      path: vars/passwords.yml
-    register: passwordsfile
-  - name: Check if file vms.csv exists
-    stat:
-      path: vars/vms.csv
-    register: vmsfile
-  - name: Check if file vmtemplates.csv exists
-    stat:
-      path: vars/vmtemplates.csv
-    register: vmtemplatesfile
-  - name: Check if file vmflavours.csv exists
-    stat:
-      path: vars/vmflavours.csv
-    register: vmflavoursfile
-  - name: Check if file permissions.csv exists
-    stat:
-      path: vars/permissions.csv
-    register: permissionsfile
+  vars:
+    TempDir:                   /tmp                                 # Temp directory on the Ansible Controller
+    WorkingDir:                /tmp/ubuntu20                        # Working directory on the Ansible Controller
+    UbuntuISO:                 ubuntu-20.04.2-live-server-amd64.iso # Ubuntu ISO filename
+    UbuntuISO_URL:             https://releases.ubuntu.com/20.04/   # Ubuntu ISO URL
+    UbuntuNewISO:              ubuntu2004.iso                       # Ubuntu custom ISO name
+    vCenterServer:             vcenter.demo.local                   # vCenter FQDN
+    vCenterUser:               administrator@vsphere.local          # vCenter username
+    vCenterPassword:           VMware1!                             # vCenter password
+    DataCenter:                SDDC                                 # vCenter datacenter
+    vSphereCluster:            Lab-Cluster                          # vCenter cluster
+    VMFolder:                  Management                           # vCenter VM folder
+    Datastore:                 Shared_VMs                           # vSphere datastore              
+    DatastoreDir:              /SDDCLab-ISO-Folder                  # vSphere datastore ISO directory                            
+    UbuntuVMName:              demo-server                          # Ubuntu VM name of the virtual machine          
+    UbuntuVMDiskSize:          50                                   # Ubuntu VM disksize in gigabytes
+    UbuntuVMMemorySize:        2048                                 # Ubuntu VM memory size in megabytes
+    UbuntuVMCPUs:              1                                    # Ubuntu VM number of CPUs 
+    UbuntuVMCPUCores:          1                                    # Ubuntu VM number of cores
+    UbuntuVMPortGroup:         VLAN-301                             # Ubuntu VM vSphere portgroup 
+    UbuntuOSLocale:            en_US                                # Ubuntu OS locale
+    UbuntuOSKeyboardLayout:    en                                   # Ubuntu OS keyboard layout 
+    UbuntuOSKeyboardVariant:   us                                   # Ubuntu OS keyboard variant
+    UbuntuOSIPv4Address:       10.203.0.50/24                       # Ubuntu OS IPv4 address
+    UbuntuOSIPv4Gateway:       10.203.0.1                           # Ubuntu OS IPv4 gateway
+    UbuntuOSIPv4DNS:           10.203.0.5                           # Ubuntu OS DNS server
+    UbuntuOSSearchDomain:      sddc.lab                             # Ubuntu OS DNS search domain
+    UbuntuOSHostname:          demo-server                          # Ubuntu OS hostname
+    UbuntuOSUser:              ubuntu                               # Ubuntu OS username
+    UbuntuOSPassword:          VMware1!                             # Ubuntu OS password
 
-  # If there is a missing config file terminates the play
-  - name: Terminate the play is any variable file is missing
-    fail: msg="Variable file is missing"
-    when: passwordsfile.stat.exists is undefined or vmsfile.stat.exists is undefined or vmtemplatesfile.stat.exists is undefined or vmflavoursfile.stat.exists is undefined or permissionsfile.stat.exists is undefined 
-  - block:
-  # Parse passwords.yml file
-      - name: Include logging credentials for RHVM
-        include_vars:
-          file: vars/passwords.yml
-          name: rhvm
-  # Create the security token to authenticate to the RHVM API
-      - name: Obtain SSO token
-        ovirt_auth:
-          url: https://rhvm.example.com/ovirt-engine/api
-          username: "{{ rhvm.username }}"
-          password: "{{ rhvm.password }}"
-  # Parse Config files
-      - name: Parse vms.csv input file
-        read_csv:
-          path: vars/vms.csv
-          key: name
-        register: vms
-      - name: Parse vmtemplates.csv input file
-        read_csv:
-          path: vars/vmtemplates.csv
-        register: templates
-      - name: Parse vmflavours.csv input file
-        read_csv:
-          path: vars/vmflavours.csv
-          key: name
-        register: flavours
-  #  Extract the variables from the parsed config files
-      - name: Set VM Variables
-        set_fact:
-          vmname: "{{ item.value.name }}"
-          vmflavour: "{{ item.value.vmflavour }}"
-          sitename: "{{ item.value.site }}"
-          systemname: "{{ item.value.system }}"
-          vmtype: "{{ item.value.type }}"
-          vmcluster: "{{ item.value.cluster }}"
-          vmclass: "{{ item.value.class }}"
-          vmos: "{{ item.value.os }}"
-          vmfqdn: "{{ item.value.fqdn }}"
-          vmnic: "{{ item.value.nic }}"
-          vmgw: "{{ item.value.gw }}"
-          vmmask: "{{ item.value.mask }}"
-          cloud_init_dns1: "{{ item.value.dns1 }}"
-          cloud_init_dns2: "{{ item.value.dns2 }}"
-          cloud_init_dns_zone: "{{ item.value.dns_domain }}"
-        loop: "{{ vms.dict|dict2items }}"
-        when: item.value.name==vmchoice
-  # Verify that the VM name is already defined in the config file
-      - name: Interrupt Play beacause the VM is not defined
-        fail: msg="The VM you want to create is not defined in the config files"
-        when: vmname is undefined
-      - name: Set VM size
-        set_fact:
-           memorysize: "{{ item.value.memorysize }}"
-           guaranteedmemory: "{{ item.value.guaranteedmemory }}"
-           cpusockets: "{{ item.value.cpusockets }}"
-           cputhreads: "{{ item.value.cputhreads }}"
-           cpucores: "{{ item.value.cpucores }}"
-        loop: "{{ flavours.dict|dict2items }}"
-        when: item.value.name==vmflavour
-      - name: Set the template to be used
-        set_fact:
-          template: "{{ item.name }}"
-          template_version: "{{ item.version }}"
-        loop: "{{ templates.list }}"
-        when: item.site==sitename and item.system==systemname
-      - name: Determine the permissions needed
-        read_csv:
-          path: vars/permissions.csv
-        register: permissions
-  # Check if the VM already exists
-      - name: Check if the VM exists
-        ovirt_vm_info:
-          auth: "{{ ovirt_auth }}"
-          pattern: name= "{{ vmname }}"
-        register: result
-  # Terminate the play with an error message if the VM already exists
-      - name: Interrupt Play beacause the VM exists
-        fail: msg="The VM you want to create is already there"
-        when: result.ovirt_vms[0]['status'] is defined
-  # Create the VM
-      - name: Create VM from a template
-        ovirt_vm:
-          auth: "{{ ovirt_auth }}"
-          state: present
-          name: "{{ vmname }}"
-          memory: "{{ memorysize }}GiB"
-          memory_guaranteed: "{{ guaranteedmemory }}GiB"
-          cpu_sockets: "{{ cpusockets }}"
-          cpu_threads: "{{ cputhreads }}"
-          cpu_cores: "{{ cpucores }}"
-          template: "{{ template }}"
-          template_version: "{{ template_version }}"
-          cluster: "{{ vmcluster }}"
-          type: "{{ vmclass }}"
-          operating_system: "{{ vmos }}"
-          wait: true
-      - name: Adding special permissions if needed
-        ovirt_permission:
-          auth: "{{ ovirt_auth }}"
-          state: present
-          user_name: "{{ item.user }}"
-          authz_name: "{{ item.domain }}"
-          object_type: vm
-          object_name: "{{ vmname }}"
-          role: "{{ item.role }}"
-        loop: "{{ permissions.list }}"
-        when: item.system==systemname
- # Power on the VM
-      - name: Boot VM if the hosting hypervisor is defined
-        ovirt_vm:
-          auth: "{{ ovirt_auth }}"
-          name: "{{ vmname }}"
-          state: running
-          cloud_init:
-            host_name: "{{ vmfqdn  }}"
-            user_name: "{{ rhvm.cloud_init_username  }}"
-            root_password: "{{ rhvm.cloud_init_password  }}"
-            dns_servers: "{{ cloud_init_dns1  }} {{ cloud_init_dns2  }}"
-            dns_search: "{{ cloud_init_dns_zone }}"
-            nic_name: "{{ vmnic  }}"
-            nic_ip_address: "{{ vmip  }}"
-            nic_gateway: "{{ vmgw  }}"
-            nic_netmask:  "{{ vmmask  }}"
-            nic_boot_protocol: static
-# Check if the VM is UP. Has The Number of Checks, or the VM is Down?
-      - name: Verify the VM is UP
-        ovirt_vm_info:
-          auth: "{{ ovirt_auth }}"
-          pattern: name= "{{ vmname }}"
-        register: result
-        until: result.ovirt_vms[0]['status'] == "up"
-        retries: 10000
- # Verify that the SSH interface to the  VM is reachable?  - Has The Number of Checks, or the SSH interface is Down?
-      - name: Wait a maximum of 300 seconds for port 22 to become open.
-        wait_for:
-          port: 22
-          host: "{{ vmip  }}"
-          search_regex: OpenSSH
-          delay: 10
- # Create Temporary inventory and add the new VM to it
-      - name: Make sure we can use the hostname later on
-        add_host:
-          hostname: "{{ vmip  }}"
-          ansible_host: "{{ vmname  }}"
-          ansible_ssh_user: "{{ rhvm.cloud_init_username  }}"
-          ansible_ssh_pass: "{{ rhvm.cloud_init_password  }}"
-          ansible_become_pass: "{{ rhvm.cloud_init_password  }}"
-          vmfqdn: "{{ vmfqdn  }}"
-          groups: "{{ vmchoice }}"
-    always:
-      - name: Always revoke the SSO token
-        ovirt_auth:
-          state: absent
-          ovirt_auth: "{{ ovirt_auth }}"
-- name: Post Configure One VM
-  hosts: "{{ vmchoice }}"
-  become: yes
   tasks:
-  # Parse Config files- Delegate the task to localhost
-    - name: Parse vms.csv input file
-      read_csv:
-        path: vars/vms.csv
-        key: name
-      register: vms
-      delegate_to: localhost
-      become: no
-  # Extract the variables from the parsed config files
-    - name: Set VM Variables
-      set_fact:
-        vmname: "{{ item.value.name }}"
-        vmfqdn: "{{ item.value.fqdn }}"
-      loop: "{{ vms.dict|dict2items }}"
-      when: item.value.name==vmchoice
-  # Perform Post configuration tasks (Sample Task install sample rpm)
-    - name: Install CA RPM
-      yum:
-        name: https://https-repo/qemu-guest-agent-x86_64.rpm
+    - name: Create working directory on Ansible Controller
+      ansible.builtin.file:
+        path: "{{ WorkingDir }}"
+        state: directory
+
+
+    - name: Check if Ubuntu ISO exists locally on Ansible Controller
+      ansible.builtin.stat:
+        path: "{{ TempDir }}/{{ UbuntuISO }}"
+      register: InstallerFileCheck
+
+
+    - name: Download Ubuntu ISO (if ISO file doesn't exist locally)
+      ansible.builtin.get_url:
+        url:  "{{ UbuntuISO_URL }}{{ UbuntuISO }}"
+        dest: "{{ TempDir }}/{{ UbuntuISO }}"
+      when:
+        - InstallerFileCheck.stat.exists != true
+        
+
+    - name: Mount Ubuntu ISO
+      ansible.posix.mount:
+        path:   "{{ WorkingDir }}/iso"
+        src:    "{{ TempDir }}/{{ UbuntuISO }}"
+        fstype: iso9660
+        opts:   ro,noauto
+        state:  mounted
+
+    - name: Copy txt.cfg from Ubuntu ISO
+      ansible.builtin.copy: 
+        src: "{{ WorkingDir }}/iso/isolinux/txt.cfg"
+        dest: "{{ WorkingDir }}/isocopy/isolinux/"
+        mode: "666"
+
+
+    - name: Edit txt.cfg to modify append line 
+      ansible.builtin.replace:
+        dest: "{{ WorkingDir }}/isocopy/isolinux/txt.cfg"
+        regexp: 'append   initrd=/casper/initrd quiet  ---'
+        replace: 'append   initrd=/casper/initrd quiet --- autoinstall ds=nocloud;s=/cdrom/autoinstall/'
+
+
+    - name: Create directory to store user-data and meta-data
+      ansible.builtin.file:
+        path: "{{ WorkingDir }}/isocopy/autoinstall"
+        state: directory
+
+
+    - name: Copy user-data file to directory
+      ansible.builtin.template: 
+        src: ./Ubuntu_user-data.j2
+        dest: "{{ WorkingDir }}/isocopy/autoinstall/user-data"
+        mode: "666"
+
+
+    - name: Create empty meta-data file in directory
+      ansible.builtin.file:
+        path: "{{ WorkingDir }}/isocopy/autoinstall/meta-data"
+        state: touch
+        mode: "666"
+
+
+    - name: Create custom Ubuntu ISO
+      ansible.builtin.command: "xorrisofs -relaxed-filenames -J -R -o {{ TempDir }}/{{ UbuntuNewISO }} -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table {{ WorkingDir }}/iso/ {{ WorkingDir }}/isocopy/"
+      args:
+        chdir: "{{ WorkingDir }}/isocopy/"
+
+
+    - name: Unmount Ubuntu ISO
+      ansible.posix.mount:
+        path:   "{{ WorkingDir }}/iso"
+        src:    "{{ TempDir }}/{{ UbuntuISO }}"
+        fstype: iso9660
+        opts:   ro,noauto
+        state:  absent
+
+
+    - name: Upload the custom Ubuntu ISO to the vSphere datastore
+      community.vmware.vsphere_copy: 
+        hostname: "{{ vCenterServer }}"
+        username: "{{ vCenterUser }}"
+        password: "{{ vCenterPassword }}"
         validate_certs: no
-    - name: Enable RHV client agent
-      systemd:
-        name: qemu-guest-agent
-        state: started
-        enabled: yes
+        datacenter: "{{ DataCenter }}"
+        src: "{{ TempDir }}/{{ UbuntuNewISO }}" 
+        datastore: "{{ Datastore }}"
+        path: "{{ DatastoreDir }}/{{ UbuntuNewISO }}"
+
+
+    - name: Deploy Ubuntu VM
+      community.vmware.vmware_guest:
+        hostname: "{{ vCenterServer }}"
+        username: "{{ vCenterUser }}"
+        password: "{{ vCenterPassword }}"
+        validate_certs: no
+        name: "{{ UbuntuVMName }}"
+        state: poweredon
+        guest_id: ubuntu64Guest
+        cluster: "{{ vSphereCluster }}"
+        datacenter: "{{ DataCenter }}"
+        folder: "{{ VMFolder }}"
+        disk:
+        - size_gb: "{{ UbuntuVMDiskSize }}"
+          type: thin
+          datastore: "{{ Datastore }}"
+        hardware:
+          memory_mb: "{{ UbuntuVMMemorySize }}"
+          num_cpus: "{{ UbuntuVMCPUs }}"
+          num_cpu_cores_per_socket: "{{ UbuntuVMCPUCores }}"
+          scsi: paravirtual
+        networks:
+          - name: "{{ UbuntuVMPortGroup }}"
+            device_type: vmxnet3
+        cdrom:
+          - controller_number: 0
+            unit_number: 0
+            type: iso
+            iso_path: "[{{ Datastore }}] {{ DatastoreDir }}/{{ UbuntuNewISO }}"
+            state: present
+        annotation: | 
+                    *** Auto-Deployed by Ansible ***
+                    Username: {{ UbuntuOSUser }}
+                    Password: {{ UbuntuOSPassword }}
+    - name: Start checking if the Ubuntu VM is ready
+      community.vmware.vmware_guest_info:
+        hostname: "{{ vCenterServer }}"
+        username: "{{ vCenterUser }}"
+        password: "{{ vCenterPassword }}"
+        datacenter: "{{ DataCenter }}"
+        validate_certs: no
+        name: "{{ UbuntuVMName }}"
+        schema: vsphere
+      register: vm_facts
+      until: vm_facts.instance.guest.hostName is search(UbuntuOSHostname)
+      retries: 30
+      delay: 60
+
+
+    - name: Set password for the Ubuntu user
+      community.vmware.vmware_vm_shell:
+        hostname: "{{ vCenterServer }}"
+        username: "{{ vCenterUser }}"
+        password: "{{ vCenterPassword }}"
+        validate_certs: no
+        vm_id: "{{ UbuntuVMName }}"
+        vm_username: "{{ UbuntuOSUser }}"
+        vm_password: VMware1!
+        vm_shell: /usr/bin/echo
+        vm_shell_args: "'{{ UbuntuOSUser }}:{{ UbuntuOSPassword }}' | sudo chpasswd"
+
+
+    - name: Copy network configuration file to working directory
+      ansible.builtin.template: 
+        src: ./Ubuntu_Netplan.j2
+        dest: "{{ WorkingDir }}/00-installer-config.yaml"
+        mode: "666"
+
+
+    - name: Copy network configuration file to Ubuntu VM
+      community.vmware.vmware_guest_file_operation:
+        hostname: "{{ vCenterServer }}"
+        username: "{{ vCenterUser }}"
+        password: "{{ vCenterPassword }}"
+        validate_certs: no
+        vm_id: "{{ UbuntuVMName }}"
+        vm_username: "{{ UbuntuOSUser }}"
+        vm_password: VMware1!
+        copy:
+            src: "{{ WorkingDir }}/00-installer-config.yaml"
+            dest: "/home/{{ UbuntuOSUser }}/00-installer-config.yaml"
+
+
+    - name: Move network configuration file to right location on Ubuntu VM
+      community.vmware.vmware_vm_shell:
+        hostname: "{{ vCenterServer }}"
+        username: "{{ vCenterUser }}"
+        password: "{{ vCenterPassword }}"
+        validate_certs: no
+        vm_id: "{{ UbuntuVMName }}"
+        vm_username: "{{ UbuntuOSUser }}"
+        vm_password: VMware1!
+        vm_shell: /usr/bin/sudo
+        vm_shell_args: "mv /home/{{ UbuntuOSUser }}/00-installer-config.yaml /etc/netplan/00-installer-config.yaml"
+
+
+    - name: Appply the network configuration on Ubuntu VM
+      community.vmware.vmware_vm_shell:
+        hostname: "{{ vCenterServer }}"
+        username: "{{ vCenterUser }}"
+        password: "{{ vCenterPassword }}"
+        validate_certs: no
+        vm_id: "{{ UbuntuVMName }}"
+        vm_username: "{{ UbuntuOSUser }}"
+        vm_password: VMware1!
+        vm_shell: /usr/bin/sudo
+        vm_shell_args: netplan apply
+
+
+    - name: Delete working directory on Ansible Controller
+      ansible.builtin.file:
+        path: "{{ WorkingDir }}"
+        state: absent
