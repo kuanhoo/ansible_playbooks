@@ -1,6 +1,5 @@
 - hosts: all
-  gather_facts: True
-  connection: local　　
+  gather_facts: True　　
 
   tasks:
   - name: Gather Facts of all vms in vCenter Server
