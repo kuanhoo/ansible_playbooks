@@ -32,7 +32,7 @@
     UbuntuOSHostname:          demo-server                          # Ubuntu OS hostname
     UbuntuOSUser:              ubuntu                               # Ubuntu OS username
     UbuntuOSPassword:          VMware1!                             # Ubuntu OS password
-
+    
   tasks:
     - name: Create working directory on Ansible Controller
       ansible.builtin.file:
