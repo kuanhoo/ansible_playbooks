@@ -1,4 +1,4 @@
-- hosts: all　　# 注意这里使用的是 localhost
+- hosts: all
   gather_facts: True
   connection: local　　
 
